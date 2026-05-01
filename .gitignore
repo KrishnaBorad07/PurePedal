@@ -1,0 +1,49 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Mobile
+mobile/node_modules/
+mobile/.expo/
+mobile/ios/
+mobile/android/
+*.apk
+*.ipa
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
+redisdata/
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Build
+dist/
+build/
+
+# Claude AI config
+claude*.md
+.claude/

@@ -1,0 +1,89 @@
+version: "3.8"
+
+services:
+  # ── PostgreSQL + PostGIS ──────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: PurePedal_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-purepedal_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-purepedal_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-purepedal_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/src/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-purepedal_user} -d ${POSTGRES_DB:-purepedal_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: PurePedal_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Node.js backend gateway ───────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: PurePedal_backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-purepedal_user}:${POSTGRES_PASSWORD:-purepedal_pass}@postgres:5432/${POSTGRES_DB:-purepedal_db}
+      REDIS_URL: redis://redis:6379
+      SCORING_SERVICE_URL: http://scoring:8000
+      WAQI_API_TOKEN: ${WAQI_API_TOKEN:-}
+      ORS_API_KEY: ${ORS_API_KEY:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_change_me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    command: npm run dev
+
+  # ── Python scoring microservice ───────────────────────
+  scoring:
+    build:
+      context: ./scoring
+      dockerfile: Dockerfile
+    container_name: PurePedal_scoring
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-purepedal_user}:${POSTGRES_PASSWORD:-purepedal_pass}@postgres:5432/${POSTGRES_DB:-purepedal_db}
+      REDIS_URL: redis://redis:6379
+      WAQI_API_TOKEN: ${WAQI_API_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./scoring/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata:
+  redisdata:
