@@ -47,3 +47,5 @@ build/
 # Claude AI config
 claude*.md
 .claude/
+
+backend/coverage/

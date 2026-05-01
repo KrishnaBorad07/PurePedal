@@ -7,6 +7,7 @@ const logger = require("./utils/logger");
 const { testConnection: testDb } = require("./db/connection");
 const { testConnection: testRedis } = require("./db/redis");
 const healthRouter = require("./routes/health");
+const authRouter = require("./routes/auth");
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use((req, res, next) => {
 
 // ── Routes ─────────────────────────────────────────────
 app.use(healthRouter);
+app.use(authRouter);
 
 // ── 404 handler ────────────────────────────────────────
 app.use((req, res) => {
