@@ -20,12 +20,21 @@ class WeightInput(BaseModel):
         return self
 
 
+class Instruction(BaseModel):
+    text: str
+    distance_m: int
+    duration_s: int
+    manoeuvreType: int = 0
+    waypointIndex: int = 0
+
+
 class RouteInput(BaseModel):
     id: Optional[str] = None
     geometry: dict
     distance_m: float
     elevation_gain_m: float
     duration_s: Optional[float] = None
+    instructions: list[Instruction] = []
 
 
 class ScoreRequest(BaseModel):
@@ -65,6 +74,7 @@ class RankedRoute(BaseModel):
     distance_m: float
     elevation_gain_m: float
     duration_s: Optional[float]
+    instructions: list[Instruction] = []
     score: ScoreDetail
 
 

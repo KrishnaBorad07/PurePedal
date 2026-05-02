@@ -3,6 +3,7 @@ const routeCache = require("../services/routeCache");
 const scoringClient = require("../services/scoringClient");
 const { isValidLatLng, haversineDistance } = require("../utils/geo");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("../utils/errors");
+const e = require("express");
 
 const DEFAULT_WEIGHTS = { aqi: 0.6, distance: 0.25, elevation: 0.15 };
 const FREE_ROUTE_LIMIT = 3;
@@ -71,7 +72,7 @@ async function suggestRoutes(req, res, next) {
       return res.status(422).json({ error: err.message });
     }
     if (err instanceof OrsApiError) {
-      return res.status(502).json({ error: "OpenRouteService request failed." });
+      return res.status(502).json({ error: err.message || "Error fetching routes from routing service." });
     }
     if (err instanceof ScoringServiceError) {
       const status = err.isTimeout ? 504 : 502;

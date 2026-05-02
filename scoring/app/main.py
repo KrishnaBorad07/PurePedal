@@ -103,6 +103,7 @@ async def score_routes(payload: ScoreRequest, req: Request):
             distance_m=route.distance_m,
             elevation_gain_m=route.elevation_gain_m,
             duration_s=route.duration_s,
+            instructions=route.instructions,
             score=score,
         )
         for rank, (route, _, score) in enumerate(ranked, 1)

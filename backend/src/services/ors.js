@@ -1,5 +1,6 @@
 const axios = require("axios");
 const config = require("../config");
+const logger = require("../utils/logger");
 const { OrsApiError, OrsNoRouteError } = require("../utils/errors");
 
 const orsClient = axios.create({
@@ -9,58 +10,87 @@ const orsClient = axios.create({
 
 const ROUTE_TYPES = ["recommended", "alternative", "fastest"];
 
-function normalizeRoute(route, index) {
-  const geoJson = route.geometry;
+function normalizeRoute(feature, index) {
+  // /geojson endpoint returns coordinates as [lng, lat] or [lng, lat, elevation].
+  // Strip the elevation component so downstream code always receives 2D [lng, lat].
+  const rawCoords = feature.geometry.coordinates;
+  const coords = rawCoords.map((c) => (c.length > 2 ? [c[0], c[1]] : c));
 
-  const steps = route.segments?.[0]?.steps ?? [];
+  const props = feature.properties;
+  const steps = (props.segments ?? []).flatMap((seg) => seg.steps ?? []);
   const instructions = steps.map((step) => ({
     text: step.instruction,
     distance_m: Math.round(step.distance),
     duration_s: Math.round(step.duration),
+    manoeuvreType: step.type ?? 0,
+    waypointIndex: step.way_points?.[0] ?? 0,
   }));
 
   return {
     id: `ors:${index}`,
     type: ROUTE_TYPES[index] ?? "alternative",
-    geometry: geoJson,
-    distance_m: Math.round(route.summary.distance),
-    duration_s: Math.round(route.summary.duration),
-    elevation_gain_m: Math.round(route.summary.ascent ?? 0),
-    elevation_loss_m: Math.round(route.summary.descent ?? 0),
+    geometry: { type: "LineString", coordinates: coords },
+    distance_m: Math.round(props.summary.distance),
+    duration_s: Math.round(props.summary.duration),
+    elevation_gain_m: Math.round(props.ascent ?? 0),
+    elevation_loss_m: Math.round(props.descent ?? 0),
     instructions,
-    bbox: route.bbox ?? [],
+    bbox: feature.bbox ?? [],
   };
 }
 
-async function getCyclingRoutes(origin, destination) {
-  try {
-    const response = await orsClient.post(
-      "/v2/directions/cycling-regular",
-      {
-        coordinates: [
-          [origin.lng, origin.lat],
-          [destination.lng, destination.lat],
-        ],
-        alternative_routes: { target_count: 3, weight_factor: 1.4 },
-        instructions: true,
-        elevation: true,
-        geometry_format: "geojson",
-        extra_info: ["waytype", "surface"],
-        preference: "recommended",
-      },
-      {
-        headers: {
-          Authorization: config.ors.key,
-        },
-      }
-    );
+function extractOrsMessage(err) {
+  return (
+    err.response?.data?.error?.message ??
+    err.response?.data?.message ??
+    err.message ??
+    "OpenRouteService request failed."
+  );
+}
 
-    const rawRoutes = response.data.routes;
-    if (!rawRoutes || rawRoutes.length === 0) {
+async function getCyclingRoutes(origin, destination) {
+  const headers = { Authorization: config.ors.key };
+  const baseBody = {
+    coordinates: [
+      [origin.lng, origin.lat],
+      [destination.lng, destination.lat],
+    ],
+    instructions: true,
+    elevation: true,
+  };
+
+  let response;
+  try {
+    try {
+      response = await orsClient.post(
+        "/v2/directions/cycling-regular/geojson",
+        { ...baseBody, alternative_routes: { target_count: 3, weight_factor: 1.4 } },
+        { headers }
+      );
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 400) {
+        // ORS rejects alternative_routes for routes that are too short or too
+        // constrained — fall back to the single best route
+        logger.warn(
+          { orsError: err.response?.data },
+          "ORS rejected alternative_routes — retrying without"
+        );
+        response = await orsClient.post(
+          "/v2/directions/cycling-regular/geojson",
+          baseBody,
+          { headers }
+        );
+      } else {
+        throw err;
+      }
+    }
+
+    const features = response.data.features;
+    if (!features || features.length === 0) {
       throw new OrsNoRouteError("No cycling route found between these locations.");
     }
 
-    const normalized = rawRoutes.map((r, i) => normalizeRoute(r, i));
+    const normalized = features.map((f, i) => normalizeRoute(f, i));
 
     // Re-assign "fastest" to whichever route has the lowest duration_s
     if (normalized.length > 1) {
@@ -80,9 +110,8 @@ async function getCyclingRoutes(origin, destination) {
   } catch (err) {
     if (err instanceof OrsNoRouteError) throw err;
     if (axios.isAxiosError(err)) {
-      throw new OrsApiError(
-        err.message ?? "OpenRouteService request failed."
-      );
+      logger.warn({ orsError: err.response?.data }, "ORS API error");
+      throw new OrsApiError(extractOrsMessage(err));
     }
     throw err;
   }

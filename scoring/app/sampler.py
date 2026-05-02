@@ -27,23 +27,30 @@ def sample_points(
 
     coords are [lng, lat] per GeoJSON convention.
     Returns dicts with lat, lng, distance_m.
+    All distance_m values are capped at the total haversine length of the route.
     """
     if len(coords) < 2:
         lng0, lat0 = coords[0]
         return [{"lat": lat0, "lng": lng0, "distance_m": 0.0}]
 
-    samples: list[dict] = []
-    accumulated = 0.0
-    next_sample_at = 0.0
-
-    lng0, lat0 = coords[0]
-    samples.append({"lat": lat0, "lng": lng0, "distance_m": 0.0})
-    next_sample_at = interval_m
-
+    # Pre-compute all segment lengths so total_length is known before sampling
+    seg_lengths: list[float] = []
     for i in range(1, len(coords)):
         lng_prev, lat_prev = coords[i - 1]
         lng_curr, lat_curr = coords[i]
-        seg_len = haversine_m(lat_prev, lng_prev, lat_curr, lng_curr)
+        seg_lengths.append(haversine_m(lat_prev, lng_prev, lat_curr, lng_curr))
+    total_length = sum(seg_lengths)
+
+    samples: list[dict] = []
+    accumulated = 0.0
+    next_sample_at = interval_m
+
+    lng0, lat0 = coords[0]
+    samples.append({"lat": lat0, "lng": lng0, "distance_m": 0.0})
+
+    for i, seg_len in enumerate(seg_lengths):
+        lng_prev, lat_prev = coords[i]
+        lng_curr, lat_curr = coords[i + 1]
 
         while next_sample_at <= accumulated + seg_len:
             if len(samples) >= MAX_SAMPLES:
@@ -52,7 +59,7 @@ def sample_points(
             samples.append({
                 "lat": lat_prev + t * (lat_curr - lat_prev),
                 "lng": lng_prev + t * (lng_curr - lng_prev),
-                "distance_m": next_sample_at,
+                "distance_m": min(next_sample_at, total_length),
             })
             next_sample_at += interval_m
 
@@ -61,8 +68,9 @@ def sample_points(
         if len(samples) >= MAX_SAMPLES:
             break
 
+    # Always include the true end point; distance_m is the computed total length
     lng_end, lat_end = coords[-1]
-    end_point = {"lat": lat_end, "lng": lng_end, "distance_m": accumulated}
+    end_point = {"lat": lat_end, "lng": lng_end, "distance_m": total_length}
 
     last = samples[-1]
     if last["lat"] != lat_end or last["lng"] != lng_end:
