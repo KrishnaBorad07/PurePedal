@@ -1,0 +1,330 @@
+{
+  "info": {
+    "name": "PurePedal API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Sprint 1–3a endpoints. POST /routes/suggest excluded (requires Sprint 3b scoring service)."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "auth_token", "value": "" },
+    { "key": "saved_route_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /auth/signup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/auth/signup",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"testpassword123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /auth/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('auth_token', json.access_token);",
+                  "  console.log('Token saved to auth_token variable.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"testpassword123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "GET /me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/me"
+          }
+        },
+        {
+          "name": "PATCH /me — update display_name",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/api/v1/me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Krishna\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PATCH /me — update home_location (Mumbai)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/api/v1/me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"home_location\": { \"lat\": 19.0760, \"lng\": 72.8777 }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AQI",
+      "item": [
+        {
+          "name": "GET /aqi/current — Mumbai",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/aqi/current?lat=19.0760&lng=72.8777",
+              "query": [
+                { "key": "lat", "value": "19.0760" },
+                { "key": "lng", "value": "72.8777" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /aqi/current — invalid coords (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/aqi/current?lat=999&lng=999",
+              "query": [
+                { "key": "lat", "value": "999" },
+                { "key": "lng", "value": "999" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /aqi/heatmap — Mumbai bbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/aqi/heatmap?latMin=18.9&lngMin=72.7&latMax=19.3&lngMax=73.1",
+              "query": [
+                { "key": "latMin", "value": "18.9" },
+                { "key": "lngMin", "value": "72.7" },
+                { "key": "latMax", "value": "19.3" },
+                { "key": "lngMax", "value": "73.1" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /aqi/heatmap — bbox too large (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/aqi/heatmap?latMin=10&lngMin=70&latMax=20&lngMax=80",
+              "query": [
+                { "key": "latMin", "value": "10" },
+                { "key": "lngMin", "value": "70" },
+                { "key": "latMax", "value": "20" },
+                { "key": "lngMax", "value": "80" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /aqi/forecast — premium only (403 for free user)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/aqi/forecast?lat=19.0760&lng=72.8777&hours=24",
+              "query": [
+                { "key": "lat", "value": "19.0760" },
+                { "key": "lng", "value": "72.8777" },
+                { "key": "hours", "value": "24" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Saved Routes",
+      "item": [
+        {
+          "name": "GET /routes/saved",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/routes/saved"
+          }
+        },
+        {
+          "name": "POST /routes/saved — save a route",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "  pm.collectionVariables.set('saved_route_id', json.id);",
+                  "  console.log('Route ID saved:', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/api/v1/routes/saved",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Morning commute\",\n  \"geometry\": {\n    \"type\": \"LineString\",\n    \"coordinates\": [\n      [72.8777, 19.0760],\n      [72.8800, 19.0850],\n      [72.8850, 19.0950]\n    ]\n  },\n  \"distance_m\": 2400,\n  \"elevation_gain_m\": 12,\n  \"aqi_at_save\": 42,\n  \"tags\": [\"commute\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /routes/saved — missing name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/api/v1/routes/saved",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"geometry\": {\n    \"type\": \"LineString\",\n    \"coordinates\": [\n      [72.8777, 19.0760],\n      [72.8800, 19.0850]\n    ]\n  },\n  \"distance_m\": 2400\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /routes/saved — invalid geometry, 1 coord (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/api/v1/routes/saved",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad route\",\n  \"geometry\": {\n    \"type\": \"LineString\",\n    \"coordinates\": [[72.8777, 19.0760]]\n  },\n  \"distance_m\": 100\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /routes/saved/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/routes/saved/{{saved_route_id}}"
+          }
+        },
+        {
+          "name": "DELETE /routes/saved/:id — not found (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/routes/saved/00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth Errors",
+      "item": [
+        {
+          "name": "No token — 401",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/me"
+          }
+        },
+        {
+          "name": "Invalid token — 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer invalid.token.here" }
+            ],
+            "url": "{{base_url}}/api/v1/me"
+          }
+        }
+      ]
+    }
+  ]
+}

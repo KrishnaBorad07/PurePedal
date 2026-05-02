@@ -26,9 +26,34 @@ class CacheError extends Error {
   }
 }
 
+class OrsApiError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "OrsApiError";
+  }
+}
+
+class OrsNoRouteError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "OrsNoRouteError";
+  }
+}
+
+class ScoringServiceError extends Error {
+  constructor(message, isTimeout = false) {
+    super(message);
+    this.name = "ScoringServiceError";
+    this.isTimeout = isTimeout;
+  }
+}
+
 module.exports = {
   WaqiApiError,
   StationTooFarError,
   NoForecastAvailableError,
   CacheError,
+  OrsApiError,
+  OrsNoRouteError,
+  ScoringServiceError,
 };
