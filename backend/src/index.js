@@ -9,6 +9,8 @@ const { testConnection: testRedis } = require("./db/redis");
 const healthRouter = require("./routes/health");
 const authRouter = require("./routes/auth");
 const aqiRouter = require("./routes/aqi");
+const routesRouter = require("./routes/routes");
+const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("./utils/errors");
 const { startAqiRefreshWorker } = require("./workers/aqiRefresh");
 
 const app = express();
@@ -36,6 +38,7 @@ app.use((req, res, next) => {
 app.use(healthRouter);
 app.use(authRouter);
 app.use(aqiRouter);
+app.use(routesRouter);
 
 // ── 404 handler ────────────────────────────────────────
 app.use((req, res) => {
@@ -45,6 +48,16 @@ app.use((req, res) => {
 // ── Error handler ──────────────────────────────────────
 app.use((err, req, res, next) => {
   logger.error({ err }, "Unhandled error");
+  if (err instanceof OrsNoRouteError) {
+    return res.status(422).json({ error: err.message });
+  }
+  if (err instanceof OrsApiError) {
+    return res.status(502).json({ error: "Route data temporarily unavailable." });
+  }
+  if (err instanceof ScoringServiceError) {
+    const status = err.isTimeout ? 504 : 502;
+    return res.status(status).json({ error: "Scoring service temporarily unavailable." });
+  }
   res.status(500).json({ error: "Internal server error" });
 });
 
