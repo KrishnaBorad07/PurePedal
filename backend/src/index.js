@@ -10,6 +10,7 @@ const healthRouter = require("./routes/health");
 const authRouter = require("./routes/auth");
 const aqiRouter = require("./routes/aqi");
 const routesRouter = require("./routes/routes");
+const ridesRouter = require("./routes/rides");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("./utils/errors");
 const { startAqiRefreshWorker } = require("./workers/aqiRefresh");
 
@@ -39,6 +40,7 @@ app.use(healthRouter);
 app.use(authRouter);
 app.use(aqiRouter);
 app.use(routesRouter);
+app.use(ridesRouter);
 
 // ── 404 handler ────────────────────────────────────────
 app.use((req, res) => {
