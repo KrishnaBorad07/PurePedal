@@ -71,7 +71,7 @@ async function suggestRoutes(req, res, next) {
       return res.status(422).json({ error: err.message });
     }
     if (err instanceof OrsApiError) {
-      return res.status(502).json({ error: "Route data temporarily unavailable." });
+      return res.status(502).json({ error: "OpenRouteService request failed." });
     }
     if (err instanceof ScoringServiceError) {
       const status = err.isTimeout ? 504 : 502;

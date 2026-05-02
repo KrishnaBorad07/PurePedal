@@ -1,17 +1,16 @@
 const axios = require("axios");
-const polyline = require("@mapbox/polyline");
 const config = require("../config");
 const { OrsApiError, OrsNoRouteError } = require("../utils/errors");
 
 const orsClient = axios.create({
-  baseURL: "https://api.heigit.org",
+  baseURL: "https://api.heigit.org/openrouteservice",
   timeout: 10_000,
 });
 
 const ROUTE_TYPES = ["recommended", "alternative", "fastest"];
 
 function normalizeRoute(route, index) {
-  const geoJson = polyline.toGeoJSON(route.geometry);
+  const geoJson = route.geometry;
 
   const steps = route.segments?.[0]?.steps ?? [];
   const instructions = steps.map((step) => ({
@@ -42,15 +41,16 @@ async function getCyclingRoutes(origin, destination) {
           [origin.lng, origin.lat],
           [destination.lng, destination.lat],
         ],
-        alternatives: true,
+        alternative_routes: { target_count: 3, weight_factor: 1.4 },
         instructions: true,
         elevation: true,
+        geometry_format: "geojson",
         extra_info: ["waytype", "surface"],
         preference: "recommended",
       },
       {
         headers: {
-          Authorization: `Bearer ${config.ors.key}`,
+          Authorization: config.ors.key,
         },
       }
     );
