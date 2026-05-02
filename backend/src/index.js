@@ -8,6 +8,8 @@ const { testConnection: testDb } = require("./db/connection");
 const { testConnection: testRedis } = require("./db/redis");
 const healthRouter = require("./routes/health");
 const authRouter = require("./routes/auth");
+const aqiRouter = require("./routes/aqi");
+const { startAqiRefreshWorker } = require("./workers/aqiRefresh");
 
 const app = express();
 
@@ -33,6 +35,7 @@ app.use((req, res, next) => {
 // ── Routes ─────────────────────────────────────────────
 app.use(healthRouter);
 app.use(authRouter);
+app.use(aqiRouter);
 
 // ── 404 handler ────────────────────────────────────────
 app.use((req, res) => {
@@ -53,6 +56,7 @@ async function start() {
 
     app.listen(config.port, () => {
       logger.info({ port: config.port }, "PurePedal backend running");
+      startAqiRefreshWorker();
     });
   } catch (err) {
     logger.fatal({ err }, "Failed to start server");

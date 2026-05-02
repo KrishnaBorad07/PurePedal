@@ -3,7 +3,7 @@ const config = require("../config");
 const logger = require("../utils/logger");
 
 const redis = new Redis(config.redis.url, {
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: null,
   lazyConnect: true,
 });
 
