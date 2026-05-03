@@ -118,6 +118,17 @@ function sampleTrack(coordinates, intervalM = 500, maxSamples = 50) {
   });
 }
 
+function getCurrentWeekBounds(now = new Date()) {
+  const day = now.getUTCDay();
+  const monday = new Date(now);
+  monday.setUTCDate(now.getUTCDate() - ((day + 6) % 7));
+  monday.setUTCHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  sunday.setUTCHours(23, 59, 59, 999);
+  return { weekStart: monday, weekEnd: sunday };
+}
+
 module.exports = {
   isValidLatLng,
   toGeohash,
@@ -127,4 +138,5 @@ module.exports = {
   interpolatePoint,
   simplifyTrack,
   sampleTrack,
+  getCurrentWeekBounds,
 };

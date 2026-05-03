@@ -1,5 +1,7 @@
-const { haversineDistance } = require("../utils/geo");
-const { getCategory, computeWeekBoundaries } = require("../controllers/rides.controller");
+const { haversineDistance, getCurrentWeekBounds } = require("../utils/geo");
+const { getCategory } = require("../controllers/rides.controller");
+
+const computeWeekBoundaries = getCurrentWeekBounds;
 
 describe("Distance computation", () => {
   it("returns correct value for known coordinate pairs", () => {

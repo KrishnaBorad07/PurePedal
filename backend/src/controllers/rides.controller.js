@@ -1,7 +1,8 @@
 const { pool } = require("../db/connection");
+const { redis } = require("../db/redis");
 const logger = require("../utils/logger");
 const aqiCache = require("../services/aqiCache");
-const { haversineDistance, isValidLatLng, simplifyTrack, sampleTrack } = require("../utils/geo");
+const { haversineDistance, isValidLatLng, simplifyTrack, sampleTrack, getCurrentWeekBounds } = require("../utils/geo");
 
 function getCategory(aqi) {
   if (aqi <= 50) return "good";
@@ -12,16 +13,6 @@ function getCategory(aqi) {
   return "hazardous";
 }
 
-function computeWeekBoundaries(now = new Date()) {
-  const day = now.getUTCDay();
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() - ((day + 6) % 7));
-  monday.setUTCHours(0, 0, 0, 0);
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  sunday.setUTCHours(23, 59, 59, 999);
-  return { weekStart: monday, weekEnd: sunday };
-}
 
 async function createRide(req, res, next) {
   try {
@@ -262,7 +253,12 @@ async function getRideById(req, res, next) {
 
 async function getWeeklySummary(req, res, next) {
   try {
-    const { weekStart, weekEnd } = computeWeekBoundaries();
+    const { weekStart, weekEnd } = getCurrentWeekBounds();
+    const cacheKey = `weekly-summary:${req.dbUser.id}:${weekStart.toISOString().slice(0, 10)}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ ...JSON.parse(cached), cached: true });
+    }
 
     const [aggResult, cleanestResult, pollutedResult] = await Promise.all([
       pool.query(
@@ -305,6 +301,7 @@ async function getWeeklySummary(req, res, next) {
         weekEnd: weekEnd.toISOString(),
         totalRides: 0,
         hasRides: false,
+        cached: false,
       });
     }
 
@@ -335,6 +332,7 @@ async function getWeeklySummary(req, res, next) {
         aqiCategory: getCategory(parseFloat(polluted.avg_aqi)),
       },
       hasRides: true,
+      cached: false,
     });
   } catch (err) {
     next(err);
@@ -403,5 +401,4 @@ module.exports = {
   getWeeklySummary,
   getBestTime,
   getCategory,
-  computeWeekBoundaries,
 };

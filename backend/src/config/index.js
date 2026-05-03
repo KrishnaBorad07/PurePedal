@@ -26,4 +26,14 @@ module.exports = {
   jwt: {
     secret: process.env.JWT_SECRET,
   },
+  expo: {
+    pushUrl: 'https://exp.host/--/api/v2/push/send',
+  },
+  workers: {
+    aqiRefreshIntervalMs: 45 * 60 * 1000,
+    hazardAlertsIntervalMs: 60 * 60 * 1000,
+    weeklySummaryCron: '0 20 * * 0',
+    hazardAlertSuppressionTtlS: 6 * 60 * 60,
+    weeklySummaryTtlS: 7 * 24 * 60 * 60,
+  },
 };

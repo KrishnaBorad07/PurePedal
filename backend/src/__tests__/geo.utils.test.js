@@ -7,6 +7,7 @@ const {
   interpolatePoint,
   simplifyTrack,
   sampleTrack,
+  getCurrentWeekBounds,
 } = require("../utils/geo");
 
 describe("isValidLatLng", () => {
@@ -163,5 +164,43 @@ describe("sampleTrack", () => {
   it("first sample is always at distanceFromStart_m = 0", () => {
     const samples = sampleTrack(TRACK, 500, 50);
     expect(samples[0].distanceFromStart_m).toBe(0);
+  });
+});
+
+describe("getCurrentWeekBounds", () => {
+  it("returns Monday as weekStart", () => {
+    // 2026-05-06 is a Wednesday
+    const { weekStart } = getCurrentWeekBounds(new Date("2026-05-06T12:00:00Z"));
+    expect(weekStart.getUTCDay()).toBe(1); // Monday
+    expect(weekStart.toISOString().slice(0, 10)).toBe("2026-05-04");
+  });
+
+  it("returns Sunday as weekEnd", () => {
+    const { weekEnd } = getCurrentWeekBounds(new Date("2026-05-06T12:00:00Z"));
+    expect(weekEnd.getUTCDay()).toBe(0); // Sunday
+    expect(weekEnd.toISOString().slice(0, 10)).toBe("2026-05-10");
+  });
+
+  it("is correct when called on a Monday", () => {
+    // 2026-05-04 is a Monday
+    const { weekStart, weekEnd } = getCurrentWeekBounds(new Date("2026-05-04T00:00:00Z"));
+    expect(weekStart.toISOString().slice(0, 10)).toBe("2026-05-04");
+    expect(weekEnd.toISOString().slice(0, 10)).toBe("2026-05-10");
+  });
+
+  it("is correct when called on a Sunday", () => {
+    // 2026-05-10 is a Sunday
+    const { weekStart, weekEnd } = getCurrentWeekBounds(new Date("2026-05-10T23:00:00Z"));
+    expect(weekStart.toISOString().slice(0, 10)).toBe("2026-05-04");
+    expect(weekEnd.toISOString().slice(0, 10)).toBe("2026-05-10");
+  });
+
+  it("returns UTC dates regardless of server timezone", () => {
+    const { weekStart, weekEnd } = getCurrentWeekBounds(new Date("2026-05-06T12:00:00Z"));
+    expect(weekStart.getUTCHours()).toBe(0);
+    expect(weekStart.getUTCMinutes()).toBe(0);
+    expect(weekEnd.getUTCHours()).toBe(23);
+    expect(weekEnd.getUTCMinutes()).toBe(59);
+    expect(weekEnd.getUTCSeconds()).toBe(59);
   });
 });
