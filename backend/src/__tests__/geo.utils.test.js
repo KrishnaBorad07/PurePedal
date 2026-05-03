@@ -4,6 +4,9 @@ const {
   boundingBoxArea,
   toGeohash,
   getBoundingBoxGeohashes,
+  interpolatePoint,
+  simplifyTrack,
+  sampleTrack,
 } = require("../utils/geo");
 
 describe("isValidLatLng", () => {
@@ -79,5 +82,86 @@ describe("getBoundingBoxGeohashes", () => {
     expect(typeof ne).toBe("string");
     expect(sw.length).toBe(3);
     expect(ne.length).toBe(3);
+  });
+});
+
+// Straight-line track: Mumbai area, ~150m each segment
+const TRACK = [
+  [72.877, 19.076],
+  [72.878, 19.077],
+  [72.879, 19.078],
+  [72.880, 19.079],
+];
+
+describe("simplifyTrack", () => {
+  it("preserves first and last points", () => {
+    const result = simplifyTrack(TRACK);
+    expect(result[0]).toEqual(TRACK[0]);
+    expect(result[result.length - 1]).toEqual(TRACK[TRACK.length - 1]);
+  });
+
+  it("removes collinear intermediate points", () => {
+    // Perfectly collinear points should collapse to just start + end
+    const collinear = [
+      [0, 0],
+      [0.0001, 0],
+      [0.0002, 0],
+      [0.0003, 0],
+    ];
+    const result = simplifyTrack(collinear, 0.0001);
+    expect(result.length).toBe(2);
+  });
+
+  it("returns at least 2 points for any valid input", () => {
+    expect(simplifyTrack([[72.877, 19.076], [72.878, 19.077]]).length).toBeGreaterThanOrEqual(2);
+    expect(simplifyTrack(TRACK).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("interpolatePoint", () => {
+  const coords = [[72.877, 19.076], [72.887, 19.086]];
+
+  it("returns the first point at 0m", () => {
+    const p = interpolatePoint(coords, 0);
+    expect(p.lat).toBeCloseTo(19.076, 4);
+    expect(p.lng).toBeCloseTo(72.877, 4);
+  });
+
+  it("returns the last point at total distance", () => {
+    const totalDist = haversineDistance(19.076, 72.877, 19.086, 72.887);
+    const p = interpolatePoint(coords, totalDist);
+    expect(p.lat).toBeCloseTo(19.086, 4);
+    expect(p.lng).toBeCloseTo(72.887, 4);
+  });
+
+  it("correctly interpolates a midpoint", () => {
+    const totalDist = haversineDistance(19.076, 72.877, 19.086, 72.887);
+    const p = interpolatePoint(coords, totalDist / 2);
+    expect(p.lat).toBeCloseTo(19.081, 2);
+    expect(p.lng).toBeCloseTo(72.882, 2);
+  });
+});
+
+describe("sampleTrack", () => {
+  it("returns 2 samples for a track shorter than the interval", () => {
+    // ~150m track, interval 500m
+    const shortTrack = [[72.877, 19.076], [72.878, 19.077]];
+    const samples = sampleTrack(shortTrack, 500, 50);
+    expect(samples.length).toBe(2);
+  });
+
+  it("caps at maxSamples for very long tracks", () => {
+    // Build a ~30km track with many segments
+    const coords = [];
+    for (let i = 0; i <= 300; i++) {
+      coords.push([72.877 + i * 0.001, 19.076]);
+    }
+    const samples = sampleTrack(coords, 100, 50);
+    expect(samples.length).toBe(50);
+  });
+
+  it("first sample is always at distanceFromStart_m = 0", () => {
+    const samples = sampleTrack(TRACK, 500, 50);
+    expect(samples[0].distanceFromStart_m).toBe(0);
   });
 });
