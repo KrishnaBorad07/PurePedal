@@ -26,6 +26,9 @@ module.exports = {
   jwt: {
     secret: process.env.JWT_SECRET,
   },
+  revenuecat: {
+    webhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET,
+  },
   expo: {
     pushUrl: 'https://exp.host/--/api/v2/push/send',
   },

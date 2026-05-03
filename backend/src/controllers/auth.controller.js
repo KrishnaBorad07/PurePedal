@@ -194,4 +194,20 @@ async function patchMe(req, res) {
   }
 }
 
-module.exports = { signup, login, logout, getMe, patchMe };
+function getSubscriptionStatus(req, res) {
+  const { subscription_status, subscription_expires_at } = req.dbUser;
+
+  const isActive =
+    subscription_status === "premium" &&
+    (subscription_expires_at === null ||
+      new Date(subscription_expires_at) > new Date());
+
+  return res.status(200).json({
+    status: subscription_status,
+    expiresAt: subscription_expires_at ?? null,
+    isActive,
+    canAccessPremium: isActive,
+  });
+}
+
+module.exports = { signup, login, logout, getMe, patchMe, getSubscriptionStatus };
