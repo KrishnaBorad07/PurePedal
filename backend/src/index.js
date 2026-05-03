@@ -12,6 +12,7 @@ const aqiRouter = require("./routes/aqi");
 const routesRouter = require("./routes/routes");
 const ridesRouter = require("./routes/rides");
 const notificationsRouter = require("./routes/notifications");
+const webhooksRouter = require("./routes/webhooks");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("./utils/errors");
 const { startWorkers } = require("./workers");
 
@@ -20,6 +21,11 @@ const app = express();
 // ── Middleware ──────────────────────────────────────────
 app.use(helmet());
 app.use(cors());
+
+// Webhooks mount before global express.json() so each webhook route
+// can verify the request before parsing the body.
+app.use("/webhooks", webhooksRouter);
+
 app.use(express.json());
 
 // Request logging

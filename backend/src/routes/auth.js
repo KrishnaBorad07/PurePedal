@@ -8,6 +8,7 @@ const {
   logout,
   getMe,
   patchMe,
+  getSubscriptionStatus,
 } = require("../controllers/auth.controller");
 
 const router = express.Router();
@@ -36,5 +37,8 @@ router.post("/api/v1/auth/login", loginLimiter, login);
 router.post("/api/v1/auth/logout", logoutLimiter, requireAuth, logout);
 router.get("/api/v1/me", getMeLimiter, requireAuth, syncUser, getMe);
 router.patch("/api/v1/me", patchMeLimiter, requireAuth, syncUser, patchMe);
+
+const subscriptionLimiter = makeRateLimiter(60, 60 * 1000);
+router.get("/api/v1/me/subscription", subscriptionLimiter, requireAuth, syncUser, getSubscriptionStatus);
 
 module.exports = router;
