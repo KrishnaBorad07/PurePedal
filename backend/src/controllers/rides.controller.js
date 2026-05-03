@@ -112,7 +112,7 @@ async function createRide(req, res, next) {
       `INSERT INTO rides (
         user_id, saved_route_id, started_at, ended_at,
         track_geometry, distance_m, duration_seconds, avg_aqi, max_aqi, aqi_samples
-      ) VALUES ($1, $2, $3, $4, ST_GeogFromGeoJSON($5), $6, $7, $8, $9, $10)
+      ) VALUES ($1, $2, $3, $4, ST_SetSRID(ST_GeomFromGeoJSON($5::text), 4326)::geography, $6, $7, $8, $9, $10)
       RETURNING id, created_at`,
       [
         req.dbUser.id,
