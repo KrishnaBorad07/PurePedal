@@ -378,6 +378,59 @@ describe("GET /api/v1/rides/summary/weekly", () => {
   });
 });
 
+// ── GET /api/v1/rides/summary/weekly — cache behaviour ───────────────────────
+
+describe("GET /api/v1/rides/summary/weekly — Redis cache", () => {
+  const { redis } = require("../db/redis");
+
+  const CACHED_SUMMARY = {
+    weekStart: "2026-04-28T00:00:00.000Z",
+    weekEnd: "2026-05-04T23:59:59.999Z",
+    totalRides: 3,
+    totalDistance_m: 21000,
+    totalDuration_seconds: 4800,
+    avgAqi: 38.2,
+    aqiCategory: "good",
+    cleanestRide: { id: "r1", startedAt: "2026-04-28T07:00:00Z", distance_m: 7000, avg_aqi: 22.0, aqiCategory: "good" },
+    mostPollutedRide: { id: "r2", startedAt: "2026-04-30T18:00:00Z", distance_m: 7000, avg_aqi: 62.0, aqiCategory: "moderate" },
+    hasRides: true,
+  };
+
+  it("returns cached: true when Redis has the weekly summary", async () => {
+    authAs(FREE_USER);
+    redis.get.mockResolvedValueOnce(JSON.stringify(CACHED_SUMMARY));
+
+    const res = await request(app)
+      .get("/api/v1/rides/summary/weekly")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.cached).toBe(true);
+    expect(res.body.totalRides).toBe(3);
+    // DB should not have been called beyond syncUser (2 calls)
+    expect(pool.query.mock.calls.length).toBe(2);
+  });
+
+  it("returns cached: false and queries the DB when Redis has no summary", async () => {
+    authAs(FREE_USER);
+    redis.get.mockResolvedValueOnce(null);
+    pool.query
+      .mockResolvedValueOnce({
+        rows: [{ total_rides: "2", total_distance_m: "14000", total_duration_seconds: "3600", avg_aqi: "45.0" }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: "r1", started_at: "2026-04-29T07:00:00Z", distance_m: 6000, avg_aqi: "30.0" }] })
+      .mockResolvedValueOnce({ rows: [{ id: "r2", started_at: "2026-04-30T08:00:00Z", distance_m: 8000, avg_aqi: "60.0" }] });
+
+    const res = await request(app)
+      .get("/api/v1/rides/summary/weekly")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.cached).toBe(false);
+    expect(res.body.totalRides).toBe(2);
+  });
+});
+
 // ── GET /api/v1/rides/best-time ───────────────────────────────────────────────
 
 describe("GET /api/v1/rides/best-time", () => {

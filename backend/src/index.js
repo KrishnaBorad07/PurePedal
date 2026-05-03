@@ -11,8 +11,9 @@ const authRouter = require("./routes/auth");
 const aqiRouter = require("./routes/aqi");
 const routesRouter = require("./routes/routes");
 const ridesRouter = require("./routes/rides");
+const notificationsRouter = require("./routes/notifications");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("./utils/errors");
-const { startAqiRefreshWorker } = require("./workers/aqiRefresh");
+const { startWorkers } = require("./workers");
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use(authRouter);
 app.use(aqiRouter);
 app.use(routesRouter);
 app.use(ridesRouter);
+app.use(notificationsRouter);
 
 // ── 404 handler ────────────────────────────────────────
 app.use((req, res) => {
@@ -71,7 +73,7 @@ async function start() {
 
     app.listen(config.port, () => {
       logger.info({ port: config.port }, "PurePedal backend running");
-      startAqiRefreshWorker();
+      startWorkers();
     });
   } catch (err) {
     logger.fatal({ err }, "Failed to start server");
