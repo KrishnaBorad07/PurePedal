@@ -3,11 +3,11 @@ const routeCache = require("../services/routeCache");
 const scoringClient = require("../services/scoringClient");
 const { isValidLatLng, haversineDistance } = require("../utils/geo");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("../utils/errors");
-const e = require("express");
 
 const DEFAULT_WEIGHTS = { aqi: 0.6, distance: 0.25, elevation: 0.15 };
 const FREE_ROUTE_LIMIT = 3;
 const ROUTE_LABELS = ["Cleanest", "Alternative", "Fastest"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseLatLng(obj) {
   if (!obj || typeof obj !== "object") return null;
@@ -23,6 +23,14 @@ function resolveWeights(dbUser, preferences) {
     return preferences.weights;
   }
   return dbUser.scoring_weights ?? DEFAULT_WEIGHTS;
+}
+
+function isPremiumUser(dbUser) {
+  return (
+    dbUser.subscription_status === "premium" &&
+    (dbUser.subscription_expires_at === null ||
+      new Date(dbUser.subscription_expires_at) > new Date())
+  );
 }
 
 async function suggestRoutes(req, res, next) {
@@ -84,15 +92,33 @@ async function suggestRoutes(req, res, next) {
 
 async function getSavedRoutes(req, res, next) {
   try {
-    const isPremium = req.dbUser.subscription_status === "premium";
+    const isPremium = isPremiumUser(req.dbUser);
     const limit = isPremium ? null : FREE_ROUTE_LIMIT;
+    const tag = req.query.tag ? req.query.tag.toLowerCase() : null;
+    const rawCollectionId = req.query.collectionId || null;
+
+    const queryParams = [req.dbUser.id, tag];
+
+    let collectionCondition;
+    if (rawCollectionId === "uncollected") {
+      collectionCondition = "sr.collection_id IS NULL";
+    } else if (rawCollectionId) {
+      queryParams.push(rawCollectionId);
+      collectionCondition = `sr.collection_id = $${queryParams.length}::uuid`;
+    } else {
+      collectionCondition = "TRUE";
+    }
 
     const result = await pool.query(
-      `SELECT id, name, distance_m, elevation_gain_m, aqi_at_save, tags, collection_id, created_at
-       FROM saved_routes
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
-      [req.dbUser.id]
+      `SELECT sr.id, sr.name, sr.distance_m, sr.elevation_gain_m, sr.aqi_at_save,
+              sr.tags, sr.collection_id, sr.created_at, c.name AS collection_name
+       FROM saved_routes sr
+       LEFT JOIN collections c ON sr.collection_id = c.id
+       WHERE sr.user_id = $1
+         AND ($2::text IS NULL OR $2 = ANY(SELECT lower(unnest(sr.tags))))
+         AND ${collectionCondition}
+       ORDER BY sr.created_at DESC`,
+      queryParams
     );
 
     const routes = result.rows;
@@ -104,12 +130,71 @@ async function getSavedRoutes(req, res, next) {
   }
 }
 
+async function getSavedRoute(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const existResult = await pool.query(
+      "SELECT id, user_id FROM saved_routes WHERE id = $1",
+      [id]
+    );
+    if (existResult.rows.length === 0) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+    if (existResult.rows[0].user_id !== req.dbUser.id) {
+      return res.status(403).json({ error: "You do not have permission to view this route." });
+    }
+
+    const result = await pool.query(
+      `SELECT sr.id, sr.name, ST_AsGeoJSON(sr.geometry)::jsonb AS geometry,
+              sr.distance_m, sr.elevation_gain_m, sr.aqi_at_save, sr.tags,
+              sr.collection_id, sr.aqi_samples, sr.score_breakdown, sr.created_at,
+              c.name AS collection_name
+       FROM saved_routes sr
+       LEFT JOIN collections c ON sr.collection_id = c.id
+       WHERE sr.id = $1`,
+      [id]
+    );
+
+    const row = result.rows[0];
+    const response = {
+      id: row.id,
+      name: row.name,
+      distance_m: row.distance_m,
+      elevation_gain_m: row.elevation_gain_m,
+      aqi_at_save: row.aqi_at_save,
+      tags: row.tags,
+      collection_id: row.collection_id,
+      collection_name: row.collection_name,
+      created_at: row.created_at,
+      geometry: row.geometry,
+    };
+
+    if (isPremiumUser(req.dbUser)) {
+      response.aqiSamples = row.aqi_samples;
+      response.scoreBreakdown = row.score_breakdown;
+    }
+
+    return res.json(response);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function saveRoute(req, res, next) {
   try {
-    const { name, geometry, distance_m, elevation_gain_m, aqi_at_save, tags } = req.body;
-    const isPremium = req.dbUser.subscription_status === "premium";
+    const {
+      name,
+      geometry,
+      distance_m,
+      elevation_gain_m,
+      aqi_at_save,
+      tags,
+      aqi_samples,
+      score_breakdown,
+    } = req.body;
+    const isPremium = isPremiumUser(req.dbUser);
 
-    // Validate name
     if (!name || typeof name !== "string" || name.trim().length === 0) {
       return res.status(400).json({ error: "name is required." });
     }
@@ -117,24 +202,27 @@ async function saveRoute(req, res, next) {
       return res.status(400).json({ error: "name must be 100 characters or fewer." });
     }
 
-    // Validate geometry
-    if (!geometry || geometry.type !== "LineString" || !Array.isArray(geometry.coordinates) || geometry.coordinates.length < 2) {
-      return res.status(400).json({ error: "geometry must be a valid GeoJSON LineString with at least 2 coordinates." });
+    if (
+      !geometry ||
+      geometry.type !== "LineString" ||
+      !Array.isArray(geometry.coordinates) ||
+      geometry.coordinates.length < 2
+    ) {
+      return res.status(400).json({
+        error: "geometry must be a valid GeoJSON LineString with at least 2 coordinates.",
+      });
     }
 
-    // Validate distance_m
     if (!Number.isInteger(distance_m) || distance_m <= 0) {
       return res.status(400).json({ error: "distance_m must be a positive integer." });
     }
 
-    // Validate elevation_gain_m
     if (elevation_gain_m !== undefined && elevation_gain_m !== null) {
       if (!Number.isInteger(elevation_gain_m) || elevation_gain_m < 0) {
         return res.status(400).json({ error: "elevation_gain_m must be a non-negative integer." });
       }
     }
 
-    // Validate aqi_at_save
     if (aqi_at_save !== undefined && aqi_at_save !== null) {
       const aqi = parseFloat(aqi_at_save);
       if (isNaN(aqi) || aqi < 0 || aqi > 500) {
@@ -142,7 +230,6 @@ async function saveRoute(req, res, next) {
       }
     }
 
-    // Validate and filter tags
     let resolvedTags = [];
     if (isPremium && Array.isArray(tags)) {
       if (tags.length > 5) {
@@ -156,7 +243,45 @@ async function saveRoute(req, res, next) {
       resolvedTags = tags;
     }
 
-    // Free-tier cap enforcement
+    if (aqi_samples !== undefined && aqi_samples !== null) {
+      if (!Array.isArray(aqi_samples)) {
+        return res.status(400).json({ error: "aqi_samples must be an array." });
+      }
+      if (aqi_samples.length > 50) {
+        return res.status(400).json({ error: "aqi_samples must have 50 items or fewer." });
+      }
+      for (const sample of aqi_samples) {
+        if (
+          typeof sample.lat !== "number" ||
+          typeof sample.lng !== "number" ||
+          !Number.isInteger(sample.aqi) ||
+          sample.aqi < 0 ||
+          sample.aqi > 500 ||
+          !Number.isInteger(sample.distanceM) ||
+          sample.distanceM < 0
+        ) {
+          return res.status(400).json({
+            error:
+              "Each aqi_samples item must have lat, lng (numbers), aqi (integer 0–500), and distanceM (non-negative integer).",
+          });
+        }
+      }
+    }
+
+    if (score_breakdown !== undefined && score_breakdown !== null) {
+      for (const key of ["final", "aqi", "distance", "elevation"]) {
+        if (
+          typeof score_breakdown[key] !== "number" ||
+          score_breakdown[key] < 0 ||
+          score_breakdown[key] > 100
+        ) {
+          return res.status(400).json({
+            error: `score_breakdown.${key} must be a number between 0 and 100.`,
+          });
+        }
+      }
+    }
+
     if (!isPremium) {
       const countResult = await pool.query(
         "SELECT COUNT(*) FROM saved_routes WHERE user_id = $1",
@@ -171,9 +296,15 @@ async function saveRoute(req, res, next) {
     }
 
     const result = await pool.query(
-      `INSERT INTO saved_routes (user_id, name, geometry, distance_m, elevation_gain_m, aqi_at_save, tags)
-       VALUES ($1, $2, ST_SetSRID(ST_GeomFromGeoJSON($3::text), 4326)::geography, $4, $5, $6, $7)
-       RETURNING id, name, distance_m, elevation_gain_m, aqi_at_save, tags, collection_id, created_at`,
+      `INSERT INTO saved_routes (
+         user_id, name, geometry, distance_m, elevation_gain_m,
+         aqi_at_save, tags, aqi_samples, score_breakdown
+       ) VALUES (
+         $1, $2, ST_SetSRID(ST_GeomFromGeoJSON($3::text), 4326)::geography,
+         $4, $5, $6, $7, $8, $9
+       )
+       RETURNING id, name, distance_m, elevation_gain_m, aqi_at_save,
+                 tags, collection_id, created_at`,
       [
         req.dbUser.id,
         name.trim(),
@@ -182,6 +313,8 @@ async function saveRoute(req, res, next) {
         elevation_gain_m ?? 0,
         aqi_at_save ?? null,
         resolvedTags,
+        aqi_samples != null ? JSON.stringify(aqi_samples) : null,
+        score_breakdown != null ? JSON.stringify(score_breakdown) : null,
       ]
     );
 
@@ -215,4 +348,65 @@ async function deleteRoute(req, res, next) {
   }
 }
 
-module.exports = { suggestRoutes, getSavedRoutes, saveRoute, deleteRoute };
+async function assignRouteCollection(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { collectionId } = req.body;
+
+    if (collectionId !== null && collectionId !== undefined) {
+      if (typeof collectionId !== "string" || !UUID_RE.test(collectionId)) {
+        return res.status(400).json({ error: "collectionId must be a valid UUID or null." });
+      }
+    }
+
+    const routeResult = await pool.query(
+      "SELECT id, user_id FROM saved_routes WHERE id = $1",
+      [id]
+    );
+    if (routeResult.rows.length === 0) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+    if (routeResult.rows[0].user_id !== req.dbUser.id) {
+      return res.status(403).json({ error: "You do not have permission to modify this route." });
+    }
+
+    if (collectionId) {
+      const colResult = await pool.query(
+        "SELECT id, user_id FROM collections WHERE id = $1",
+        [collectionId]
+      );
+      if (colResult.rows.length === 0) {
+        return res.status(404).json({ error: "Collection not found." });
+      }
+      if (colResult.rows[0].user_id !== req.dbUser.id) {
+        return res.status(403).json({ error: "You do not have permission to use this collection." });
+      }
+    }
+
+    const result = await pool.query(
+      "UPDATE saved_routes SET collection_id = $1 WHERE id = $2 RETURNING id, collection_id",
+      [collectionId ?? null, id]
+    );
+
+    const message = collectionId
+      ? "Route moved to collection successfully."
+      : "Route removed from collection successfully.";
+
+    return res.json({
+      id: result.rows[0].id,
+      collectionId: result.rows[0].collection_id,
+      message,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  suggestRoutes,
+  getSavedRoutes,
+  getSavedRoute,
+  saveRoute,
+  deleteRoute,
+  assignRouteCollection,
+};

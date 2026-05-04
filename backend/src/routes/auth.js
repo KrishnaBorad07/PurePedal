@@ -2,6 +2,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const { requireAuth } = require("../middleware/auth");
 const { syncUser } = require("../middleware/syncUser");
+const { requirePremium } = require("../middleware/requirePremium");
 const {
   signup,
   login,
@@ -9,6 +10,7 @@ const {
   getMe,
   patchMe,
   getSubscriptionStatus,
+  patchScoringWeights,
 } = require("../controllers/auth.controller");
 
 const router = express.Router();
@@ -40,5 +42,6 @@ router.patch("/api/v1/me", patchMeLimiter, requireAuth, syncUser, patchMe);
 
 const subscriptionLimiter = makeRateLimiter(60, 60 * 1000);
 router.get("/api/v1/me/subscription", subscriptionLimiter, requireAuth, syncUser, getSubscriptionStatus);
+router.patch("/api/v1/me/scoring-weights", requireAuth, syncUser, requirePremium, patchScoringWeights);
 
 module.exports = router;
