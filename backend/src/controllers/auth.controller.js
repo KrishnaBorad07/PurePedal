@@ -210,4 +210,39 @@ function getSubscriptionStatus(req, res) {
   });
 }
 
-module.exports = { signup, login, logout, getMe, patchMe, getSubscriptionStatus };
+async function patchScoringWeights(req, res, next) {
+  try {
+    const { aqi, distance, elevation } = req.body;
+
+    if (aqi === undefined || distance === undefined || elevation === undefined) {
+      return res.status(400).json({ error: "aqi, distance, and elevation are all required." });
+    }
+    if (typeof aqi !== "number" || typeof distance !== "number" || typeof elevation !== "number") {
+      return res.status(400).json({ error: "aqi, distance, and elevation must be numbers." });
+    }
+    if (aqi < 0 || aqi > 1 || distance < 0 || distance > 1 || elevation < 0 || elevation > 1) {
+      return res.status(400).json({ error: "Each weight must be between 0.0 and 1.0." });
+    }
+
+    const sum = aqi + distance + elevation;
+    if (Math.abs(sum - 1.0) > 0.01) {
+      return res.status(400).json({
+        error: `Weights must sum to 1.0. Received sum: ${sum.toFixed(2)}`,
+      });
+    }
+
+    const { rows } = await pool.query(
+      "UPDATE users SET scoring_weights = $1, updated_at = NOW() WHERE id = $2 RETURNING scoring_weights",
+      [{ aqi, distance, elevation }, req.dbUser.id]
+    );
+
+    return res.json({
+      scoringWeights: rows[0].scoring_weights,
+      message: "Scoring weights updated successfully.",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { signup, login, logout, getMe, patchMe, getSubscriptionStatus, patchScoringWeights };

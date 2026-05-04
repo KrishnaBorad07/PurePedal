@@ -6,6 +6,7 @@ const config = require("./config");
 const logger = require("./utils/logger");
 const { testConnection: testDb } = require("./db/connection");
 const { testConnection: testRedis } = require("./db/redis");
+const { migrate } = require("./db/migrate");
 const healthRouter = require("./routes/health");
 const authRouter = require("./routes/auth");
 const aqiRouter = require("./routes/aqi");
@@ -13,6 +14,7 @@ const routesRouter = require("./routes/routes");
 const ridesRouter = require("./routes/rides");
 const notificationsRouter = require("./routes/notifications");
 const webhooksRouter = require("./routes/webhooks");
+const collectionsRouter = require("./routes/collections");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("./utils/errors");
 const { startWorkers } = require("./workers");
 
@@ -49,6 +51,7 @@ app.use(aqiRouter);
 app.use(routesRouter);
 app.use(ridesRouter);
 app.use(notificationsRouter);
+app.use(collectionsRouter);
 
 // ── 404 handler ────────────────────────────────────────
 app.use((req, res) => {
@@ -76,6 +79,7 @@ async function start() {
   try {
     await testDb();
     await testRedis();
+    await migrate();
 
     app.listen(config.port, () => {
       logger.info({ port: config.port }, "PurePedal backend running");
