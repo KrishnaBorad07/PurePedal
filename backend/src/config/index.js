@@ -38,5 +38,6 @@ module.exports = {
     weeklySummaryCron: '0 20 * * 0',
     hazardAlertSuppressionTtlS: 6 * 60 * 60,
     weeklySummaryTtlS: 7 * 24 * 60 * 60,
+    monthlyReportCron: process.env.MONTHLY_REPORT_CRON || '0 2 1 * *',
   },
 };

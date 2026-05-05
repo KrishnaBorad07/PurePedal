@@ -11,6 +11,7 @@ const {
   patchMe,
   getSubscriptionStatus,
   patchScoringWeights,
+  getExposureScore,
 } = require("../controllers/auth.controller");
 
 const router = express.Router();
@@ -43,5 +44,6 @@ router.patch("/api/v1/me", patchMeLimiter, requireAuth, syncUser, patchMe);
 const subscriptionLimiter = makeRateLimiter(60, 60 * 1000);
 router.get("/api/v1/me/subscription", subscriptionLimiter, requireAuth, syncUser, getSubscriptionStatus);
 router.patch("/api/v1/me/scoring-weights", requireAuth, syncUser, requirePremium, patchScoringWeights);
+router.get("/api/v1/me/exposure", requireAuth, syncUser, requirePremium, getExposureScore);
 
 module.exports = router;

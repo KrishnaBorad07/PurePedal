@@ -29,6 +29,21 @@ class AqiClient:
             logger.warning("AQI cache read failed for (%s, %s)", lat, lng)
         return FALLBACK_AQI, False
 
+    async def get_forecast_aqi(self, lat: float, lng: float, forecast_date: str) -> float:
+        """Return avg AQI for forecast_date from the Redis forecast cache. Fallback: 75.0."""
+        try:
+            key = f"aqi:forecast:{geohash.encode(lat, lng, precision=5)}"
+            raw = await self._redis.get(key)
+            if raw is None:
+                return FALLBACK_AQI
+            data = json.loads(raw)
+            for entry in data.get("forecast", []):
+                if entry.get("day") == forecast_date:
+                    return float(entry["avg"])
+        except Exception:
+            logger.warning("Forecast AQI cache read failed for (%s, %s) date=%s", lat, lng, forecast_date)
+        return FALLBACK_AQI
+
     @property
     def hit_rate(self) -> float:
         if self._total == 0:

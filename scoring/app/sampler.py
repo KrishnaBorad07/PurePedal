@@ -86,19 +86,23 @@ async def sample_route(
     coords: list[list[float]],
     aqi_client,
     interval_m: float = INTERVAL_M,
+    forecast_date: str | None = None,
 ) -> list[AqiSample]:
     positions = sample_points(coords, interval_m)
+
+    if forecast_date:
+        results = await asyncio.gather(
+            *[aqi_client.get_forecast_aqi(p["lat"], p["lng"], forecast_date) for p in positions]
+        )
+        return [
+            AqiSample(lat=p["lat"], lng=p["lng"], aqi=aqi_val, distanceM=p["distance_m"])
+            for p, aqi_val in zip(positions, results)
+        ]
 
     results = await asyncio.gather(
         *[aqi_client.get_aqi(p["lat"], p["lng"]) for p in positions]
     )
-
     return [
-        AqiSample(
-            lat=p["lat"],
-            lng=p["lng"],
-            aqi=aqi_val,
-            distanceM=p["distance_m"],
-        )
+        AqiSample(lat=p["lat"], lng=p["lng"], aqi=aqi_val, distanceM=p["distance_m"])
         for p, (aqi_val, _) in zip(positions, results)
     ]
