@@ -2,7 +2,14 @@ const { pool } = require("../db/connection");
 const { redis } = require("../db/redis");
 const logger = require("../utils/logger");
 const aqiCache = require("../services/aqiCache");
+const { adminClient } = require("../utils/supabase");
 const { haversineDistance, isValidLatLng, simplifyTrack, sampleTrack, getCurrentWeekBounds } = require("../utils/geo");
+
+const MONTH_NAMES = [
+  "", "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const STORAGE_BUCKET = "monthly-reports";
 
 function getCategory(aqi) {
   if (aqi <= 50) return "good";
@@ -394,6 +401,57 @@ async function getBestTime(req, res, next) {
   }
 }
 
+async function getMonthlyReport(req, res, next) {
+  try {
+    const month = parseInt(req.query.month, 10);
+    const year = parseInt(req.query.year, 10);
+
+    if (!month || month < 1 || month > 12) {
+      return res.status(400).json({ error: "month must be an integer between 1 and 12." });
+    }
+    if (!year || year < 2000 || year > 9999) {
+      return res.status(400).json({ error: "year must be a valid 4-digit year." });
+    }
+
+    const result = await pool.query(
+      `SELECT file_path, generated_at FROM report_metadata
+       WHERE user_id = $1 AND month = $2 AND year = $3`,
+      [req.dbUser.id, month, year]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: `No report available for ${MONTH_NAMES[month]} ${year}. Reports are generated on the 1st of each month.`,
+      });
+    }
+
+    const { file_path, generated_at } = result.rows[0];
+    const expiresInSeconds = 7 * 24 * 60 * 60;
+
+    const { data, error } = await adminClient.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrl(file_path, expiresInSeconds);
+
+    if (error) {
+      logger.error({ err: error, userId: req.dbUser.id, month, year }, "Failed to create signed URL");
+      return res.status(502).json({ error: "Could not generate download URL. Please try again." });
+    }
+
+    const urlExpiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+
+    return res.status(200).json({
+      month,
+      year,
+      label: `${MONTH_NAMES[month]} ${year}`,
+      downloadUrl: data.signedUrl,
+      urlExpiresAt,
+      generatedAt: generated_at,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createRide,
   getRides,
@@ -401,4 +459,5 @@ module.exports = {
   getWeeklySummary,
   getBestTime,
   getCategory,
+  getMonthlyReport,
 };

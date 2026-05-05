@@ -41,6 +41,7 @@ class ScoreRequest(BaseModel):
     routes: list[RouteInput]
     weights: WeightInput = WeightInput()
     userId: Optional[str] = None
+    forecastDate: Optional[str] = None  # 'YYYY-MM-DD' or None for live AQI
 
     @field_validator("routes")
     @classmethod

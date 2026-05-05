@@ -1,6 +1,7 @@
 const { pool } = require("../db/connection");
 const routeCache = require("../services/routeCache");
 const scoringClient = require("../services/scoringClient");
+const aqiCache = require("../services/aqiCache");
 const { isValidLatLng, haversineDistance } = require("../utils/geo");
 const { OrsApiError, OrsNoRouteError, ScoringServiceError } = require("../utils/errors");
 
@@ -60,8 +61,24 @@ async function suggestRoutes(req, res, next) {
     }
 
     const weights = resolveWeights(req.dbUser, req.body.preferences);
+
+    let forecastDate = null;
+    let forecastAt = null;
+    if (req.body.forecastAt !== undefined && isPremiumUser(req.dbUser)) {
+      const ts = new Date(req.body.forecastAt);
+      if (isNaN(ts.getTime())) {
+        return res.status(400).json({ error: "forecastAt must be a valid ISO 8601 UTC timestamp." });
+      }
+      const diffMs = ts - Date.now();
+      if (diffMs < 60 * 60 * 1000 || diffMs > 48 * 60 * 60 * 1000) {
+        return res.status(400).json({ error: "Forecast routing is only available up to 48 hours in advance." });
+      }
+      forecastDate = ts.toISOString().slice(0, 10);
+      forecastAt = req.body.forecastAt;
+    }
+
     const { routes, cached } = await routeCache.getRoutes(origin, destination);
-    const scored = await scoringClient.scoreRoutes(routes, weights, req.dbUser.id);
+    const scored = await scoringClient.scoreRoutes(routes, weights, req.dbUser.id, forecastDate);
 
     const labelledRoutes = scored.routes.map((route, i) => ({
       ...route,
@@ -71,6 +88,8 @@ async function suggestRoutes(req, res, next) {
     return res.json({
       routes: labelledRoutes,
       recommendedRouteId: labelledRoutes[0]?.id ?? null,
+      forecastAt: forecastAt,
+      isForecast: forecastAt !== null,
       origin,
       destination,
       cachedRoutes: cached,
@@ -402,6 +421,91 @@ async function assignRouteCollection(req, res, next) {
   }
 }
 
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function aqiRating(aqi) {
+  if (aqi <= 50) return "excellent";
+  if (aqi <= 100) return "good";
+  if (aqi <= 150) return "fair";
+  return "poor";
+}
+
+function dayLabel(dateStr) {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const tomorrow = new Date(today);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  if (dateStr === todayStr) return "Today";
+  if (dateStr === tomorrowStr) return "Tomorrow";
+  const d = new Date(dateStr + "T00:00:00Z");
+  return DAY_NAMES[d.getUTCDay()];
+}
+
+async function getDepartureForecast(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const routeResult = await pool.query(
+      `SELECT id, user_id, name,
+         ST_Y(ST_StartPoint(geometry::geometry)) AS origin_lat,
+         ST_X(ST_StartPoint(geometry::geometry)) AS origin_lng
+       FROM saved_routes WHERE id = $1`,
+      [id]
+    );
+
+    if (routeResult.rows.length === 0) {
+      return res.status(404).json({ error: "Route not found." });
+    }
+    const route = routeResult.rows[0];
+    if (route.user_id !== req.dbUser.id) {
+      return res.status(403).json({ error: "You do not have permission to view this route." });
+    }
+
+    const forecast = await aqiCache.getForecastForPoint(route.origin_lat, route.origin_lng);
+
+    if (!forecast || !Array.isArray(forecast.forecast) || forecast.forecast.length === 0) {
+      return res.status(404).json({
+        error: "No forecast data available for this route's location.",
+        cached: false,
+      });
+    }
+
+    const days = forecast.forecast.slice(0, 7).map((day) => {
+      const windows = [
+        { label: "Early morning", from: "05:00", to: "08:00", estimatedAqi: day.min },
+        { label: "Midday", from: "11:00", to: "14:00", estimatedAqi: day.avg },
+        { label: "Evening", from: "17:00", to: "20:00", estimatedAqi: day.min },
+      ].map((w) => ({ ...w, rating: aqiRating(w.estimatedAqi) }));
+
+      const best = windows.reduce((a, b) => (a.estimatedAqi <= b.estimatedAqi ? a : b));
+
+      return {
+        date: day.day,
+        dayLabel: dayLabel(day.day),
+        avgAqi: day.avg,
+        minAqi: day.min,
+        maxAqi: day.max,
+        overallRating: aqiRating(day.avg),
+        windows,
+        bestWindow: best.label,
+      };
+    });
+
+    return res.json({
+      routeId: route.id,
+      routeName: route.name,
+      originLat: route.origin_lat,
+      originLng: route.origin_lng,
+      forecastDays: days,
+      daysReturned: days.length,
+      cached: forecast.cached ?? false,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   suggestRoutes,
   getSavedRoutes,
@@ -409,4 +513,5 @@ module.exports = {
   saveRoute,
   deleteRoute,
   assignRouteCollection,
+  getDepartureForecast,
 };

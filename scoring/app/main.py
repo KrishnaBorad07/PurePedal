@@ -73,7 +73,7 @@ async def score_routes(payload: ScoreRequest, req: Request):
     all_samples = []
     for route in payload.routes:
         coords = route.geometry["coordinates"]
-        samples = await sample_route(coords, aqi_client)
+        samples = await sample_route(coords, aqi_client, forecast_date=payload.forecastDate)
         all_samples.append(samples)
 
     shortest_distance_m = min(r.distance_m for r in payload.routes)

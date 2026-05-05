@@ -1,16 +1,19 @@
 const config = require("../config");
 const { ScoringServiceError } = require("../utils/errors");
 
-async function scoreRoutes(routes, weights, userId) {
+async function scoreRoutes(routes, weights, userId, forecastDate = null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
+
+  const body = { routes, weights, userId };
+  if (forecastDate) body.forecastDate = forecastDate;
 
   let response;
   try {
     response = await fetch(`${config.scoring.url}/score`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ routes, weights, userId }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
   } catch (err) {
