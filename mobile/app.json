@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "PurePedal",
+    "slug": "purepedal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.krishna.purepedal",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "PurePedal needs your location to show AQI at your position and suggest clean air routes.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "PurePedal tracks your location in the background to record your cycling route and monitor air quality during your ride.",
+        "NSMotionUsageDescription": "PurePedal uses motion data to improve ride tracking accuracy."
+      }
+    },
+    "android": {
+      "package": "com.krishna.purepedal",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+    "plugins": [
+      "expo-location",
+      "expo-notifications"
+    ]
+  }
+}
